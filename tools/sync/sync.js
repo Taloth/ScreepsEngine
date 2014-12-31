@@ -10,7 +10,6 @@ var fs = require('fs');
 var wrench = require('wrench');
 var watch = require('node-watch');
 var URL = require('url');
-var md5 = require('MD5');
 var beautify = require('./beautify');
 
 if (process.env.syncArgs) {
@@ -18,15 +17,18 @@ if (process.env.syncArgs) {
 }
 
 var opts = require('node-getopt').create([
-    ['d', 'debug',         'Enabled remote debugging capabilities (Warning: this limits the speed of the game and may cause other glitches. You don\'t need it if debugging in Chrome itself.'],
-    ['b', 'beautify',      'Serve beautified versions of the screeps engine code.'],
-    ['',  'deployDir=ARG', 'Directory to deploy from'],
-    ['',  'srcDir=ARG',    'Directory with original source files'],
-    ['',  'cacheDir=ARG',  'Path to the directory to with original source files'],
-    ['',  'port=ARG',      'Port number for the proxy server']
+    ['d', 'debug',            'Enabled remote debugging capabilities (Warning: this limits the speed of the game and may cause other glitches. You don\'t need it if debugging in Chrome itself.'],
+    ['b', 'beautify',         'Serve beautified versions of the screeps engine code.'],
+    ['',  'deployDir=ARG',    'Directory to deploy from'],
+    ['',  'deploy2Dir=ARG',   'Directory to deploy player 2 from'],
+    ['',  'deployBoth',       'Deploy the same scripts to both players'],
+    ['',  'srcDir=ARG',       'Directory with original source files'],
+    ['',  'cacheDir=ARG',     'Path to the directory to with original source files'],
+    ['',  'port=ARG',         'Port number for the proxy server']
 ]).bindHelp().parseSystem();
 
 var deployDir = fspath.resolve(__dirname, opts.options.deployDir || '../../deploy');
+var deploy2Dir = opts.options.deploy2Dir ? fspath.resolve(__dirname, opts.options.deploy2Dir) : opts.options.deployBoth ? deployDir : null;
 var srcDir = fspath.resolve(__dirname, opts.options.srcDir || '../../src');
 var engineCacheDir = fspath.resolve(__dirname, opts.options.cacheDir || '../../enginecache');
 var listenPort = parseInt(opts.options.port || '9090');
@@ -37,143 +39,131 @@ var beautifyEngine = !!opts.options.beautify;
 
 // This all runs in the browser
 var clientSide = function() {
-    function sync() {
-        // Grab reference to the commit button
-        var buttons = Array.prototype.slice.call(document.body.getElementsByTagName('button')).filter(function (el) {
-            return el.getAttribute('ng:disabled') === '!Script.dirty';
-        });
-        var commitButton = buttons[0];
 
-        // Override lodash's cloneDeep which is called from inside the internal reset method
-        var modules;
-        _.cloneDeep = function (cloneDeep) {
-            return function (obj) {
-                if (obj && typeof obj.main === 'string' && modules) {
-                    // Monkey patch!
-                    return modules;
-                }
-                return cloneDeep.apply(this, arguments);
-            };
-        }(_.cloneDeep);
+    var __sync_tool = function () {
+        var module = angular.module("app.game.script");
 
-        // Wait for changes to local filesystem
-        function update(now) {
-            var req = new XMLHttpRequest;
-            req.onreadystatechange = function () {
-                if (req.readyState === 4) {
-                    if (req.status === 200) {
-                        modules = JSON.parse(req.responseText);
-                        commitButton.disabled = false;
-                        commitButton.click();
-                    }
-                    setTimeout(update.bind(this, false), req.status === 200 ? 0 : 1000);
-                }
-            };
-            req.open('GET', 'http://localhost:9090/' + (now ? 'get' : 'wait'), true);
-            req.send();
-        };
-        update(true);
+        module.run([ "MemoryStorage", "LocalStorage", function(memoryStorage, localStorage) {
+            var self = this;
 
-        // Look for console messages
-        var sconsole = document.body.getElementsByClassName('console-messages-list')[0];
-        var lastMessage;
-        setInterval(function () {
-            var nodes = sconsole.getElementsByClassName('console-message');
-            var messages = [];
-            var found = false;
-            for (var ii = nodes.length - 1; ii >= 0; --ii) {
-                var el = nodes[ii];
-                var ts = el.getElementsByClassName('timestamp')[0];
-                ts = ts && ts.firstChild.nodeValue;
-                var msg = el.getElementsByTagName('span')[0].childNodes;
-                var txt = '';
-                for (var jj = 0; jj < msg.length; ++jj) {
-                    if (msg[jj].tagName === 'BR') {
-                        txt += '\n';
-                    } else if (msg[jj].tagName === 'ANONYMOUS') {
-                        msg = msg[jj].childNodes;
-                        jj = -1;
-                    } else {
-                        txt += msg[jj].nodeValue;
-                    }
+            function commit(userCode) {
+                var scope = angular.element("section.game section.script").scope();
+
+                // Wait for the scope to appear. There's probably a function in angular to listen on an event, but i'm too lazy to search for it.
+                if (!scope || !scope.Script) {
+                    return false;
                 }
-                if (lastMessage && txt === lastMessage[1] && ts === lastMessage[0]) {
-                    break;
+
+                // Get a reference to the controller.
+                var controller = scope.Script;
+
+                var allCode = memoryStorage.get("users.code");
+
+                if (!allCode || !allCode[0]) {
+                    console.log('syncTool: unable to get users.code (try save something from the editor first)');
+                    return false;
                 }
-                messages.push([ts, txt]);
+
+                if (userCode[0]) {
+                    allCode[0].modules = userCode[0].modules;
+                }
+                if (userCode[1]) {
+                    allCode[1].modules = userCode[1].modules;
+                }
+                memoryStorage.put("users.code", allCode);
+                localStorage.put("users.code", allCode);
+
+                controller.reset();
+
+                console.log('syncTool: updated users.code');
+                return true;
             }
-            if (messages.length) {
+
+            // Wait for changes to local filesystem
+            function update(now) {
                 var req = new XMLHttpRequest;
-                req.open('GET', 'http://localhost:9090/log?log=' + encodeURIComponent(JSON.stringify(messages.reverse())), true);
+                req.onreadystatechange = function () {
+                    if (req.readyState === 4) {
+                        var success = false;
+                        if (req.status === 200) {
+                            var userCode = JSON.parse(req.responseText);
+                            success = commit(userCode);
+                        }
+                        setTimeout(update, (req.status === 200 && success) ? 0 : 1000, !success);
+                    }
+                };
+                req.open('GET', 'http://localhost:9090/' + (now ? 'get' : 'wait'), true);
                 req.send();
-                lastMessage = messages[messages.length - 1];
-            }
-        }, 100);
-    }
+            };
 
-    // Delay injections until the user enters the game proper
-    var waitForGameConsole = function() {
+            update(true);
+        } ]);
 
-        if (!$('.console-messages-list').length) return setTimeout(waitForGameConsole, 1000);
-
-        sync();
-    };
-
-    waitForGameConsole();
-};
+        return {};
+    }();
+}
 
 // Set up watch on directory changes
-var modules = {};
-var knownModules = {};
+var modulesPlayer1 = {};
+var modulesPlayer2 = {};
 var writeListener;
 
 function fileNameToModuleName(file) {
     return file.replace(/[\\/]/g, '_').replace(/\.js$/g, '');
 }
 
-function updateModule(file) {
-    var moduleName = fileNameToModuleName(file);
-    if (fs.existsSync(fspath.join(deployDir, file))) {
-        knownModules[moduleName] = true;
-        var data = fs.readFileSync(fspath.join(deployDir, file), 'utf8');
-        data = data.replace(/(require\(['"])((?:.\/)?[a-z.\/]+)(['"]\))/gi, function (m, p1, p2, p3) {
-            var resolved = p2;
-            if (resolved != 'lodash') {
-                resolved = fspath.resolve(fspath.join(deployDir, file, '..'), resolved);
-                resolved = fspath.relative(deployDir, resolved);
-                resolved = resolved.replace(/[\\\/]/g, '_');
-
-                //console.log('' + file + ': "' + p2 + '" => "' + resolved + '"');
-            }
-            return p1 + resolved + p3;
-        });
-
-        if (modules[moduleName] && modules[moduleName] == data) {
-            return false;
-        }
-        modules[moduleName] = data;
-    } else {
-        knownModules[moduleName] = false;
-        if (!modules[moduleName]) {
-            return false;
-        }
-        delete modules[moduleName];
+function updateModule(file, modules, directory) {
+    var relPath = fspath.relative(directory, file);
+    var moduleName = fileNameToModuleName(relPath);
+    if (!fs.existsSync(file)) {
+        return false;
     }
 
-    if (writeListener) {
-        process.nextTick(writeListener);
-        writeListener = undefined;
+    var data = fs.readFileSync(file, 'utf8');
+    data = data.replace(/(require\(['"])((?:.\/)?[a-z.\/]+)(['"]\))/gi, function (m, p1, p2, p3) {
+        var resolved = p2;
+        if (resolved != 'lodash') {
+            resolved = fspath.resolve(fspath.join(file, '..'), resolved);
+            resolved = fspath.relative(directory, resolved);
+            resolved = resolved.replace(/[\\\/]/g, '_');
+
+            //console.log('' + file + ': "' + p2 + '" => "' + resolved + '"');
+        }
+        return p1 + resolved + p3;
+    });
+
+    if (modules == modulesPlayer1) {
+        data += '\n\n//# sourceURL=http://localhost:' + listenPort + '/get-player1/' + relPath.replace(/\\/g, '/') + '';
+    } else if (modules == modulesPlayer2) {
+        data += '\n\n//# sourceURL=http://localhost:' + listenPort + '/get-player2/' + relPath.replace(/\\/g, '/') + '';
     }
+
+    if (modules[moduleName] && modules[moduleName].contents == data) {
+        modules[moduleName].exists = true;
+        return false;
+    }
+    modules[moduleName] = {
+        exists: true,
+        fileName: file,
+        moduleName: moduleName,
+        contents: data
+    };
 
     return true;
 }
 
-function updateAllModules(notify) {
-    knownModules = {};
+function updateModules(notify, modules, directory) {
 
-    wrench.readdirSyncRecursive(deployDir).forEach(function(file) {
+    for(var key in modules) {
+        modules[key].exists = false;
+    }
+
+    var changedAnyModule = false;
+
+    wrench.readdirSyncRecursive(directory).forEach(function(file) {
         if (/\.js$/.test(file)) {
-            var changed = updateModule(file, false);
+            var changed = updateModule(fspath.join(directory, file), modules, directory);
+            changedAnyModule |= changed;
             if (changed && notify) {
                 console.log('Updated: ' + file);
             }
@@ -181,25 +171,61 @@ function updateAllModules(notify) {
     });
 
     for(var key in modules) {
-        if (!knownModules[key]) {
+        if (!modules[key].exists) {
             delete modules[key];
+            changedAnyModule = true;
             if (notify) {
-                console.log('Updated: ' + key);
+                console.log('Removed: ' + key);
             }
         }
     }
 
-    if (writeListener) {
-        process.nextTick(writeListener);
-        writeListener = undefined;
-    }
+    return changedAnyModule;
 }
 
-updateAllModules();
+var updateModulesTimeoutObject;
+function updateAllModules(notify) {
+    if (updateModulesTimeoutObject != -1) {
+        clearTimeout(updateModulesTimeoutObject);
+    }
+    updateModulesTimeoutObject = setTimeout(function(notify) {
+        updateModulesTimeoutObject = null;
+        var changed = updateModules(notify, modulesPlayer1, deployDir);
+        if (deployDir != deploy2Dir && deploy2Dir) {
+            changed |= updateModules(notify, modulesPlayer2, deploy2Dir);
+        }
+
+        if (writeListener && changed) {
+            process.nextTick(writeListener);
+            writeListener = undefined;
+        }
+    }, 500, notify);
+}
+
+updateAllModules(false);
+
+if (deployDir == deploy2Dir) {
+    modulesPlayer2 = modulesPlayer1;
+}
 
 watch(deployDir, function(file) {
     updateAllModules(true);
 });
+if (deployDir != deploy2Dir && deploy2Dir) {
+    watch(deploy2Dir, function(file) {
+        updateAllModules(true);
+    });
+}
+
+function getPlayerModules(modules) {
+    var list = {};
+
+    for (var key in modules) {
+        list[key] = modules[key].contents;
+    }
+
+    return list;
+}
 
 // Standalone proxy provider
 var proxy = httpProxy.createServer({ target: 'http://screeps.com:80', headers: { host: 'screeps.com' } });
@@ -225,11 +251,6 @@ app.use(function(req, res, next) {
         res.writeHead(200, {'Content-Type': 'text/javascript'});
         res.end('~' + clientSide.toString() + '()');
         return;
-    } else if (path.pathname == '/log') {
-        // ATM I'm not doing anything with the log.
-        res.writeHead(200, { 'Access-Control-Allow-Origin': '*' });
-        res.end();
-        return;
     } else if (path.pathname == '/wait' || path.pathname == '/get') {
         if (writeListener) {
             writeListener();
@@ -238,7 +259,12 @@ app.use(function(req, res, next) {
         writeListener = function() {
             console.log('Serving scripts to browser.');
             res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-            res.end(JSON.stringify(modules));
+            var userCode = [];
+            userCode.push({ _id: 0, modules: getPlayerModules(modulesPlayer1) });
+            if (deploy2Dir) {
+                userCode.push({ _id: 1, modules: getPlayerModules(modulesPlayer2) });
+            }
+            res.end(JSON.stringify(userCode));
         };
         if (req.url === '/get') {
             writeListener();
@@ -250,17 +276,24 @@ app.use(function(req, res, next) {
 });
 
 // Serve individual scripts.
-app.use('/get/', function(req, res, next) {
+app.use('/get-player1/', function(req, res, next) {
     var path = URL.parse(req.url);
-    var moduleName = fileNameToModuleName(path.pathname.replace(/\//, ''));
+    var moduleName = fileNameToModuleName(path.pathname.replace(/^\//, ''));
     res.writeHead(200, {'Content-Type': 'text/javascript'});
-    res.end(modules[moduleName]);
+    res.end(modulesPlayer1[moduleName].contents);
+});
+
+app.use('/get-player2/', function(req, res, next) {
+    var path = URL.parse(req.url);
+    var moduleName = fileNameToModuleName(path.pathname.replace(/^\//, ''));
+    res.writeHead(200, {'Content-Type': 'text/javascript'});
+    res.end(modulesPlayer2[moduleName].contents);
 });
 
 // Serve individual sources.
 app.use('/src/', function(req, res, next) {
     var path = URL.parse(req.url);
-    var fileName = fspath.resolve(srcDir, '.' + path.pathname);
+    var fileName = fspath.resolve(srcDir, path.pathname.replace(/^\//, ''));
     if (!fs.existsSync(fileName)) {
         res.writeHead(404);
         res.end();

@@ -10,6 +10,9 @@ import Flag = Game.Flag;
 import Spawn = Game.Spawn;
 import Creep = Game.Creep;
 
+/** For each Flag 'SpawnTest1', this engine will create a DeployCreepAssignment and ensure a Carrier4 creep is deployed,
+ *  it will replace the creep in a timely manner to ensure as little 'downtime' as possible.
+ **/
 class TestEngine extends Engine.EngineBase {
     creepTemplate = new Game.CreepTemplate('Carrier4');
 

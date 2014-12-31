@@ -101,6 +101,15 @@ gulp.task('syncDeploy', function() {
     });
 });
 
+/* Sync directly from the compile/output dir */
+gulp.task('syncDeployDual', function() {
+    nodemon({
+        script: 'tools/sync/sync.js',
+        watch: 'tools/sync/',
+        env: { 'syncArgs': '--beautify --deployDir ../../output --deploy2Dir ../../output' }
+    });
+});
+
 /* Sync directly from the compile/output dir (with remote debugging) */
 gulp.task('syncDeployDebug', function() {
     nodemon({
