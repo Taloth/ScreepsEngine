@@ -8,11 +8,11 @@ Finally there is a sync tool that can be used to sync the generated scripts with
 Currently I develop this using JetBrains WebStorm, take a look at [their site](https://www.jetbrains.com/webstorm/), if you're interested.
 
 Use
-===
+---
 
 Run ```npm install``` in the root to get all the required packages.
 
-**gulp tasks**
+#### gulp tasks
 
 __```gulp build```__
 
@@ -41,23 +41,23 @@ These Debug variants do a bit more trickery client-side, it's purely intended to
 - We disable the engine try-catch mechanism which would swallow uncaught exceptions, allowing you to break on uncaught exceptions.
 
 Architecture
-============
+------------
 
 Initially I opted to compile all scripts into one file, but that made it somewhat harder to debug properly.
 So instead I've separated it into modules.
 
-The important bits:
-```lib/Screeps``` is the module that contains the definitions of the core Screeps api.
-```world/Game``` contains wrapped instances of that api exposing additional functionality as well as caching.
+The important bits:  
+```lib/Screeps``` is the module that contains the definitions of the core Screeps api.  
+```world/Game``` contains wrapped instances of that api exposing additional functionality as well as caching.  
 
-```lib/*``` contains various other utilities and helpers, such as automatic name generation, although you might not like my pattern.
+```lib/*``` contains various other utilities and helpers, such as automatic name generation, although you might not like my pattern.  
 
-```engines/*``` intended to contain global decision logic.
-```behaviors/*``` intended to contain specific mixins/behaviors that can be applied to for example Creeps.
-```mission/*``` intended to contain persistable missions and assignments.
+```engines/*``` intended to contain global decision logic.  
+```behaviors/*``` intended to contain specific mixins/behaviors that can be applied to for example Creeps.  
+```mission/*``` intended to contain persistable missions and assignments.  
 
 Contribute
-==========
+----------
 
 Lemme know if you're working on an interesting feature.
 I would love to see some collaboration, so if you have something you want to contribute, make an issue or pull request.
