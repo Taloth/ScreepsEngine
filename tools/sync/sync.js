@@ -308,17 +308,24 @@ if (beautifyEngine) {
 
         data = data.toString();
 
-        var hash = md5(data);
+        var name = path.pathname.match(/^\/g\/([a-z]+)\./)[1];
         var revision = parseInt(path.query.match(/bust=(\d+)+/)[1]);
+        var hash = name + '.' + revision;
 
         var newData = beautifyCache[hash];
 
         if (!newData) {
+
+            var beautified = data;
+
             try {
 
-
+                var revCacheDir = fspath.join(engineCacheDir, revision.toString());
                 if (!fs.existsSync(engineCacheDir) ) {
                     fs.mkdirSync(engineCacheDir);
+                }
+                if (!fs.existsSync(revCacheDir) ) {
+                    fs.mkdirSync(revCacheDir);
                 }
 
                 // Extract engine code or take build.min code.
@@ -338,7 +345,7 @@ if (beautifyEngine) {
                     }
                     block = split.join('');
 
-                    var beautified = beautify(block);
+                    beautified = beautify(block);
                     split = beautified.split('\n');
                     for (var i = 0; i < split.length; i++) {
                         split[i] = split[i]
@@ -350,18 +357,17 @@ if (beautifyEngine) {
 
                     newData = prefix + joined + suffix;
 
-                    fs.writeFileSync(engineCacheDir + 'engine.' + revision + '.' + hash + '.min.js', data);
-                    fs.writeFileSync(engineCacheDir + 'engine.' + revision + '.' + hash + '.js', beautified);
-                    fs.writeFileSync(engineCacheDir + 'engine.' + revision + '.' + hash + '.runtime.js', newData);
-
                 } else {
 
-                    newData = beautify(data);
-
-                    var name = path.pathname.match(/^\/g\/([a-z]+)\./)[1];
-                    fs.writeFileSync(engineCacheDir + name + '.' + revision + '.' + hash + '.min.js', data);
-                    fs.writeFileSync(engineCacheDir + name + '.' + revision + '.' + hash + '.js', newData);
+                    newData = beautified = beautify(data);
                 }
+
+                fs.writeFileSync(fspath.join(revCacheDir, name + '.min.js'), data);
+                fs.writeFileSync(fspath.join(revCacheDir, name + '.js'), beautified);
+                if (beautified != newData) {
+                    fs.writeFileSync(fspath.join(revCacheDir, name + '.runtime.js'), newData);
+                }
+
                 beautifyCache[hash] = newData;
             } catch (e) {
                 console.log(e.toString());
