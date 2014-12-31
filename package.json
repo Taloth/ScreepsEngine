@@ -1,0 +1,24 @@
+{
+  "name": "screeps-engine",
+  "description": "",
+  "version": "0.0.1",
+  "devDependencies": {
+    "gulp": "^3.8.10",
+    "gulp-typescript": "^2.3.0",
+    "gulp-sourcemaps": "^1.2.8",
+    "gulp-replace": "^0.5.0",
+    "gulp-nodemon": "~1.0.4",
+    "http-proxy": "~1.8.1",
+    "connect": "~3.3.3",
+    "connect-injector": "~0.4.2",
+    "uglify-js": "~2.4.16",
+    "MD5": "~1.2.1",
+    "wrench": "~1.5.8",
+    "node-watch": "~0.3.4",
+    "gulp-util": "~3.0.1",
+    "map-stream": "0.0.5",
+    "gulp-concat-util": "~0.5.1",
+    "node-getopt": "~0.2.3",
+    "event-stream": "~3.2.1"
+  }
+}

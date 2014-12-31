@@ -1,0 +1,8 @@
+node_modules/
+output/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries/
+old/
+enginecache/
+deploy/
